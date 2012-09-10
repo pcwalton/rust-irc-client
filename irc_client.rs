@@ -4,22 +4,16 @@
 #[warn(deprecated_pattern)];
 
 extern mod std;
-use dvec::{dvec, DVec};
+use dvec::{DVec};
 use io::{ReaderUtil, Writer, WriterUtil};
 use std::{net_ip, net_tcp};
 use to_str::ToStr;
-use Error = result::err;
-use IOTask = std::uv_iotask::iotask;
-use IPAddr = std::net_ip::ip_addr;
-use None = option::none;
-use OK = result::ok;
-use Option = option::option;
-use Some = option::some;
-use Result = result::result;
-use TCPBufferedSocket = std::net_tcp::tcp_socket_buf;
-use TCPConnectErrData = std::net_tcp::tcp_connect_err_data;
-use TCPErrData = std::net_tcp::tcp_err_data;
-use TCPSocket = std::net_tcp::tcp_socket;
+use std::uv_iotask::IoTask;
+use std::net_ip::IpAddr;
+use std::net_tcp::TcpSocketBuf;
+use std::net_tcp::TcpConnectErrData;
+use std::net_tcp::TcpErrData;
+use std::net_tcp::TcpSocket;
 
 struct UserInfo {
     username: &str,
@@ -42,7 +36,7 @@ type IncomingCommandTable = send_map::linear::LinearMap<~str,IncomingCommand>;
 mod IncomingCommandTable {
     fn make() -> IncomingCommandTable {
         // FIXME: This is ugly due to Rust bug #3283.
-        let mut map = send_map::linear::linear_map(str::hash, str::eq);
+        let mut map = send_map::linear::LinearMap();
         (&mut map).insert(~"PING", PingCommand);
         (&mut map).insert(~"PRIVMSG", PrivMsgCommand);
         return map;
@@ -101,7 +95,7 @@ mod IncomingMsg {
         let command = get_word();
 
         // Parse any arguments.
-        let args = dvec();
+        let args = DVec();
         loop {
             match peek() {
                 None => break,
@@ -146,7 +140,7 @@ enum OutgoingMsg {
     PassMsg(&str),
     NickMsg(&str),
     UserMsg([ &str * 4 ]),
-    JoinMsg(&str, option<&str>),
+    JoinMsg(&str, Option<&str>),
     PartMsg(&str),
     PrivOutMsg(&str, &str)
 }
@@ -221,18 +215,18 @@ impl OutgoingMsg {
  */
 
 struct Connection {
-    iotask: IOTask,
-    socket: TCPBufferedSocket,
+    iotask: IoTask,
+    socket: TcpSocketBuf,
     commands: IncomingCommandTable
 }
 
 mod Connection {
-    fn make(+server_ip: IPAddr, port: uint, nick: &str, user: &UserInfo, password: &str,
-            +iotask: IOTask)
-         -> Result<Connection,TCPConnectErrData> {
+    fn make(+server_ip: IpAddr, port: uint, nick: &str, user: &UserInfo, password: &str,
+            +iotask: IoTask)
+         -> Result<Connection,TcpConnectErrData> {
         let self;
         match move net_tcp::connect(server_ip, port, iotask) {
-            OK(move socket) => {
+            Ok(move socket) => {
                 let socket = net_tcp::socket_buf(socket);
                 let commands = IncomingCommandTable::make();
                 self = Connection {
@@ -241,14 +235,14 @@ mod Connection {
                     commands: move commands
                 };
             }
-            Error(move e) => return Error(e)
+            Err(move e) => return Err(e)
         }
 
         self.send(PassMsg(password));
         self.send(NickMsg(nick));
         self.send(UserMsg([ user.username, user.hostname, user.servername, user.realname ]));
 
-        return OK(self);
+        return Ok(self);
     }
 }
 
@@ -272,10 +266,10 @@ impl Connection {
 // FIXME: Workaround for assignability restrictions (Rust issue #3285).
 fn id(s: &a/str) -> &a/str { s }
 
-pure fn get_ref<T:copy,U>(r: &a/Result<T,U>) -> &a/T {
+pure fn get_ref<T:Copy,U>(r: &a/Result<T,U>) -> &a/T {
     match *r {
-        OK(ref r) => r,
-        Error(ref the_err) => unchecked {
+        Ok(ref r) => r,
+        Err(ref the_err) => unchecked {
             fail fmt!("get called on error result: %?", *the_err)
         }
     }
