@@ -127,8 +127,8 @@ mod IncomingMsg {
             Some(PrivMsgCommand) if args.len() >= 2 => PrivInMsg(sender, args[0], args[1]),
             Some(PingCommand) | Some(PrivMsgCommand) | None => {
                 match uint::from_str(command) {
-                    Some(index) => NumberedMsg(sender, index, vec::from_mut(dvec::unwrap(args))),
-                    None => OtherMsg(sender, command, vec::from_mut(dvec::unwrap(args)))
+                    Some(index) => NumberedMsg(sender, index, dvec::unwrap(args)),
+                    None => OtherMsg(sender, command, dvec::unwrap(args))
                 }
             }
         }
@@ -259,7 +259,11 @@ impl Connection {
 
     // Sends an IRC message.
     fn send(&self, +msg: OutgoingMsg) {
-        msg.write(&self.socket);
+		use unsafe::transmute;
+		unsafe {
+			let m: &OutgoingMsg = transmute(&msg);
+			m.write(&self.socket);
+		}
     }
 }
 
